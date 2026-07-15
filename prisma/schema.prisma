@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// This schema maps the existing DuoCards PostgreSQL tables. It intentionally
+// contains no connection string and no environment-specific value.
+
+model User {
+  id                Int                @id @default(autoincrement())
+  email             String             @unique
+  password          String
+  googleId          String?            @unique
+  facebookId        String?            @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  nickname          String             @default("User")
+  locale            String             @default("cs")
+  emailVerified     Boolean            @default(true)
+  coins             Int                @default(100)
+  lastDailyReward   DateTime?
+  aiGenerations     AiGeneration[]
+  flashcardSets     FlashcardSet[]
+  words             Word[]
+  completionRewards CompletionReward[]
+  passwordResets    PasswordResetToken[]
+  liveGames         LiveGame[]
+
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model PendingRegistration {
+  id                      Int      @id @default(autoincrement())
+  email                   String   @unique
+  password                String
+  nickname                String
+  locale                  String   @default("cs")
+  createdAt               DateTime @default(now())
+  verificationCode        String
+  verificationCodeExpires DateTime
+
+  @@map("pending_registrations")
+}
+
+model FlashcardSet {
+  id             Int      @id @default(autoincrement())
+  name           String
+  userId         Int
+  fromLanguage   String?
+  toLanguage     String?
+  isAIGenerated  Boolean  @default(false)
+  tags           String[] @default([])
+  isPublic       Boolean  @default(false)
+  publicCode     String?  @unique
+  joinedFromCode String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  words          Word[]
+
+  @@map("flashcard_sets")
+}
+
+model Word {
+  id             Int           @id @default(autoincrement())
+  word           String
+  translation    String
+  difficulty     Int           @default(1)
+  userId         Int
+  flashcardSetId Int?
+  pronunciation  String?
+  imageId        Int?          @unique
+  audioId        Int?          @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  audio          WordAudio?    @relation(fields: [audioId], references: [id])
+  flashcardSet   FlashcardSet? @relation(fields: [flashcardSetId], references: [id], onDelete: Cascade)
+  image          WordImage?    @relation(fields: [imageId], references: [id])
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("words")
+}
+
+model WordImage {
+  id        Int      @id @default(autoincrement())
+  dataUrl   String
+  mimeType  String   @default("image/png")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  word      Word?
+
+  @@map("word_images")
+}
+
+model WordAudio {
+  id        Int      @id @default(autoincrement())
+  dataUrl   String
+  mimeType  String   @default("audio/mpeg")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  word      Word?
+
+  @@map("word_audio")
+}
+
+model AiGeneration {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("ai_generations")
+}
+
+model CompletionReward {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  amount         Int
+  flashcardSetId Int
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("completion_rewards")
+}
+
+model LiveGame {
+  id           Int              @id @default(autoincrement())
+  hostUserId   Int
+  roomCode     String
+  setName      String?
+  totalPlayers Int              @default(0)
+  winnerName   String?
+  startedAt    DateTime?
+  endedAt      DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  host         User             @relation(fields: [hostUserId], references: [id], onDelete: Cascade)
+  players      LiveGamePlayer[]
+
+  @@index([hostUserId, createdAt])
+  @@map("live_games")
+}
+
+model LiveGamePlayer {
+  id         Int      @id @default(autoincrement())
+  liveGameId Int
+  name       String
+  score      Int      @default(0)
+  correct    Int      @default(0)
+  total      Int      @default(0)
+  isWinner   Boolean  @default(false)
+  liveGame   LiveGame @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
+
+  @@index([liveGameId])
+  @@map("live_game_players")
+}

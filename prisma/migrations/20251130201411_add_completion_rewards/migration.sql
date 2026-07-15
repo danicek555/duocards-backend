@@ -1,0 +1,3 @@
+-- This migration directory was missing its SQL file.
+-- Completion rewards table/index/foreign key were already introduced in
+-- 20250115230000_add_completion_rewards, so this migration is intentionally a no-op.
