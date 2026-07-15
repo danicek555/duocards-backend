@@ -58,6 +58,22 @@ model PendingRegistration {
   @@map("pending_registrations")
 }
 
+model RegistrationAttempt {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique
+  email     String
+  password  String
+  nickname  String
+  locale    String   @default("cs")
+  codeHash  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+  @@map("registration_attempts")
+}
+
 model FlashcardSet {
   id             Int      @id @default(autoincrement())
   name           String

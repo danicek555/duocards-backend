@@ -21,3 +21,45 @@ test("configuration rejects a short auth secret", () => {
     /at least 32 bytes/,
   );
 });
+
+test("verification email delivery defaults to Resend", () => {
+  const config = loadConfig(requiredEnvironment);
+  assert.equal(config.verificationEmailMode, "resend");
+  assert.equal(config.resendApiKey, null);
+  assert.equal(
+    config.emailFrom,
+    "DuoCards <notifications@duocards.xyz>",
+  );
+});
+
+test("console verification emails require explicit development mode", () => {
+  assert.equal(
+    loadConfig({
+      ...requiredEnvironment,
+      NODE_ENV: "development",
+      VERIFICATION_EMAIL_MODE: "console",
+    }).verificationEmailMode,
+    "console",
+  );
+
+  assert.throws(
+    () =>
+      loadConfig({
+        ...requiredEnvironment,
+        NODE_ENV: "production",
+        VERIFICATION_EMAIL_MODE: "console",
+      }),
+    /allowed only in development/,
+  );
+});
+
+test("production Resend delivery requires an API key", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        ...requiredEnvironment,
+        NODE_ENV: "production",
+      }),
+    /RESEND_API_KEY is required/,
+  );
+});

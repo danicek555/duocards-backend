@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 export type NodeEnvironment = "development" | "test" | "production";
+export type VerificationEmailMode = "resend" | "console";
 
 export interface AppConfig {
   nodeEnv: NodeEnvironment;
@@ -12,6 +13,9 @@ export interface AppConfig {
   authSecret: string;
   corsOrigins: string[];
   cookieSecure: boolean;
+  verificationEmailMode: VerificationEmailMode;
+  resendApiKey: string | null;
+  emailFrom: string;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -45,6 +49,24 @@ function requireValue(value: string | undefined, label: string): string {
   return normalized;
 }
 
+function parseVerificationEmailMode(
+  value: string | undefined,
+): VerificationEmailMode {
+  if (value === undefined || value.trim() === "") return "resend";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "resend" || normalized === "console") {
+    return normalized;
+  }
+  throw new Error("VERIFICATION_EMAIL_MODE must be resend or console");
+}
+
+function formatEmailFrom(value: string | undefined): string {
+  const normalized = value?.trim() || "notifications@duocards.xyz";
+  return normalized.includes("<") && normalized.includes(">")
+    ? normalized
+    : `DuoCards <${normalized}>`;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const nodeEnv = parseNodeEnvironment(env.NODE_ENV);
   const selectedDatabaseUrl =
@@ -73,6 +95,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("Wildcard CORS origin is not allowed in production");
   }
 
+  const verificationEmailMode = parseVerificationEmailMode(
+    env.VERIFICATION_EMAIL_MODE,
+  );
+  if (verificationEmailMode === "console" && nodeEnv !== "development") {
+    throw new Error(
+      "VERIFICATION_EMAIL_MODE=console is allowed only in development",
+    );
+  }
+  const resendApiKey = env.RESEND_API_KEY?.trim() || null;
+  if (
+    nodeEnv === "production" &&
+    verificationEmailMode === "resend" &&
+    !resendApiKey
+  ) {
+    throw new Error(
+      "RESEND_API_KEY is required for production email verification",
+    );
+  }
+
   return {
     nodeEnv,
     host: env.HOST?.trim() || "0.0.0.0",
@@ -86,5 +127,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       nodeEnv === "production"
         ? true
         : parseBoolean(env.COOKIE_SECURE, false),
+    verificationEmailMode,
+    resendApiKey,
+    emailFrom: formatEmailFrom(env.FROM_EMAIL),
   };
 }

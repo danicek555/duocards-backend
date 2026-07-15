@@ -16,6 +16,9 @@ const config = {
   authSecret: "test-secret-with-at-least-thirty-two-bytes",
   corsOrigins: ["https://app.example.test"],
   cookieSecure: false,
+  verificationEmailMode: "resend",
+  resendApiKey: null,
+  emailFrom: "DuoCards <notifications@example.test>",
 } satisfies AppConfig;
 
 const authCookie = `auth=${createAuthToken(

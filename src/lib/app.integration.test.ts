@@ -14,6 +14,9 @@ const config = {
   authSecret: "test-secret-with-at-least-thirty-two-bytes",
   corsOrigins: [],
   cookieSecure: false,
+  verificationEmailMode: "resend",
+  resendApiKey: null,
+  emailFrom: "DuoCards <notifications@example.test>",
 } satisfies AppConfig;
 
 function createFailingPrisma(): PrismaClient {

@@ -4,18 +4,43 @@ import rateLimit from "@fastify/rate-limit";
 import type { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyInstance } from "fastify";
 import { loadConfig, type AppConfig } from "./config.js";
-import { installErrorHandlers } from "./lib/errors.js";
+import { ApiError, installErrorHandlers } from "./lib/errors.js";
 import { createDatabase } from "./lib/prisma.js";
+import {
+  createVerificationEmailSender,
+  type VerificationEmailSender,
+} from "./lib/verification-email.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerFlashcardSetRoutes } from "./routes/flashcard-sets.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMediaRoutes } from "./routes/media.js";
+import { registerRegistrationRoutes } from "./routes/registration.js";
 import { registerUserRoutes } from "./routes/user.js";
 
 export interface BuildAppOptions {
   config?: AppConfig;
   prisma?: PrismaClient;
+  emailSender?: VerificationEmailSender;
 }
+
+const RATE_LIMIT_ERRORS = {
+  "/api/v1/auth/login": {
+    code: "RATE_LIMIT_LOGIN",
+    message: "Too many login attempts. Please try again later.",
+  },
+  "/api/v1/auth/register": {
+    code: "RATE_LIMIT_REGISTER",
+    message: "Too many registration attempts. Please try again later.",
+  },
+  "/api/v1/auth/verify": {
+    code: "RATE_LIMIT_VERIFY",
+    message: "Too many verification attempts. Please try again later.",
+  },
+  "/api/v1/auth/resend": {
+    code: "RATE_LIMIT_VERIFY",
+    message: "Too many resend attempts. Please try again later.",
+  },
+} as const;
 
 export async function buildApp(
   options: BuildAppOptions = {},
@@ -24,6 +49,8 @@ export async function buildApp(
   const database = options.prisma
     ? { prisma: options.prisma, close: async () => undefined }
     : createDatabase(config.databaseUrl);
+  const emailSender =
+    options.emailSender ?? createVerificationEmailSender(config);
 
   const app = Fastify({
     logger:
@@ -44,13 +71,21 @@ export async function buildApp(
 
   await app.register(rateLimit, {
     global: false,
-    errorResponseBuilder: (request) => ({
-      error: {
-        code: "RATE_LIMIT_LOGIN",
-        message: "Too many login attempts. Please try again later.",
-      },
-      requestId: request.id,
-    }),
+    errorResponseBuilder: (request, context) => {
+      const routeError =
+        RATE_LIMIT_ERRORS[
+          request.routeOptions.url as keyof typeof RATE_LIMIT_ERRORS
+        ] ?? {
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Too many requests. Please try again later.",
+        };
+      return new ApiError(
+        context.statusCode,
+        routeError.code,
+        routeError.message,
+        { retryAfterSeconds: Math.ceil(context.ttl / 1_000) },
+      );
+    },
   });
 
   const allowedOrigins = new Set(config.corsOrigins);
@@ -68,6 +103,11 @@ export async function buildApp(
 
   await registerHealthRoutes(app);
   await registerAuthRoutes(app, { config, prisma: database.prisma });
+  await registerRegistrationRoutes(app, {
+    config,
+    prisma: database.prisma,
+    emailSender,
+  });
   await registerFlashcardSetRoutes(app, {
     config,
     prisma: database.prisma,
