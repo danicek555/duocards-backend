@@ -1,9 +1,10 @@
 # DuoCards Fastify backend
 
-An isolated TypeScript backend for the native DuoCards client. It does not
-modify or import the root Next.js application. The current scope is a
-versioned `/api/v1` facade over the existing PostgreSQL tables with shared
-authentication, read endpoints and private text flashcard-set CRUD.
+A standalone TypeScript backend shared by the
+[DuoCards web app](https://github.com/danicek555/Duocards) and the
+[native iOS app](https://github.com/danicek555/duocards-ios). The current
+scope is a versioned `/api/v1` facade over the existing PostgreSQL tables with
+shared authentication, read endpoints and private text flashcard-set CRUD.
 
 ## Requirements
 
@@ -53,6 +54,20 @@ prefix in `DUOCARDS_API_BASE_URL`, otherwise requests would contain it twice.
 
 For a physical iPhone, replace `localhost` with a reachable HTTPS development
 host or the Mac's LAN address and configure the development transport policy.
+
+## Web app connection
+
+The Next.js web repository keeps `/shared-api` as a same-origin proxy. Point it
+at this standalone service in the web app's `.env.local`:
+
+```dotenv
+SHARED_BACKEND_URL=http://127.0.0.1:4000
+NEXT_PUBLIC_SHARED_API_BASE_URL=/shared-api
+```
+
+Use the deployed HTTPS backend origin for `SHARED_BACKEND_URL` in production.
+The browser continues to call `/shared-api`, so its credentialed auth cookies
+remain same-origin from the browser's perspective.
 
 ## Endpoints
 
@@ -226,8 +241,8 @@ history currently used by the web application.
 
 Before the first `migrate deploy`, compare this history and the target
 database's `_prisma_migrations` records against a disposable snapshot. Once the
-baseline is confirmed, treat `backend/prisma/schema.prisma` and
-`backend/prisma/migrations` as the target source of truth for future backend
+baseline is confirmed, treat `prisma/schema.prisma` and
+`prisma/migrations` as the target source of truth for future backend
 schema changes. Never run `prisma migrate reset` or an unreviewed `prisma db
 push` against an existing DuoCards database.
 
