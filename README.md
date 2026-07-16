@@ -291,3 +291,9 @@ npm test
 npm run build
 npm start
 ```
+
+`prisma generate` is intentionally allowed to run without a database URL. This
+keeps schema-only Cloud Run buildpack builds independent of runtime secrets.
+The running server and database commands still require a real `DATABASE_URL`,
+`PRISMA_DATABASE_URL`, or `DIRECT_DATABASE_URL`; configure it on the Cloud Run
+service before the revision starts.

@@ -10,18 +10,16 @@ const databaseUrl = isProduction
     process.env.DATABASE_URL?.trim() ||
     process.env.PRISMA_DATABASE_URL?.trim();
 
-if (!databaseUrl) {
-  throw new Error(
-    "A database URL is required for Prisma commands",
-  );
-}
-
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: databaseUrl,
+    // Client generation is a schema-only build step and must also work in
+    // buildpack environments where runtime secrets are intentionally absent.
+    // Commands that actually access PostgreSQL reject the empty URL, while
+    // application startup independently requires a real URL in src/config.ts.
+    url: databaseUrl ?? "",
   },
 });
