@@ -89,6 +89,7 @@ export async function registerAuthRoutes(
       const token = createAuthToken(
         { userId: user.id, email: user.email },
         config.authSecret,
+        user.password,
       );
       reply.setCookie(
         AUTH_COOKIE_NAME,
@@ -110,7 +111,7 @@ export async function registerAuthRoutes(
   );
 
   app.get("/api/v1/auth/me", async (request) => {
-    const auth = requireAuth(request, config);
+    const auth = await requireAuth(request, config, prisma);
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
       select: {

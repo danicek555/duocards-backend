@@ -54,7 +54,7 @@ interface VerifiedUser {
 }
 
 type VerificationResult =
-  | { kind: "verified"; user: VerifiedUser }
+  | { kind: "verified"; user: VerifiedUser; passwordHash: string }
   | { kind: "invalid-challenge" }
   | { kind: "invalid-code" }
   | { kind: "expired" };
@@ -369,7 +369,11 @@ export async function registerRegistrationRoutes(
             await transaction.registrationAttempt.deleteMany({
               where: { email: attempt.email },
             });
-            return { kind: "verified", user };
+            return {
+              kind: "verified",
+              user,
+              passwordHash: attempt.password,
+            };
           },
         );
       } catch (error) {
@@ -412,6 +416,7 @@ export async function registerRegistrationRoutes(
       const token = createAuthToken(
         { userId: result.user.id, email: result.user.email },
         config.authSecret,
+        result.passwordHash,
       );
       reply.setCookie(AUTH_COOKIE_NAME, token, authCookieOptions(config));
       reply.clearCookie(

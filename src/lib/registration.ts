@@ -213,7 +213,7 @@ export function validatePasswordPolicy(
   };
 }
 
-function assertPasswordPolicy(password: string): void {
+export function assertPasswordPolicy(password: string): void {
   const validation = validatePasswordPolicy(password);
   if (validation.isValid) return;
   throw new ApiError(

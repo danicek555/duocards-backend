@@ -3,11 +3,41 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export interface AuthPayload {
   userId: number;
   email: string;
+  credentialVersion: string;
   exp: number;
 }
 
 export const AUTH_COOKIE_NAME = "auth";
 export const AUTH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+const CREDENTIAL_VERSION_DOMAIN =
+  "duocards-auth-credential-version:v1\0";
+
+export function createCredentialVersion(
+  passwordHash: string,
+  secret: string,
+): string {
+  return createHmac("sha256", secret)
+    .update(CREDENTIAL_VERSION_DOMAIN, "utf8")
+    .update(passwordHash, "utf8")
+    .digest("base64url");
+}
+
+export function credentialVersionMatches(
+  providedVersion: string,
+  passwordHash: string,
+  secret: string,
+): boolean {
+  if (!/^[A-Za-z0-9_-]{43}$/u.test(providedVersion)) return false;
+  const expected = Buffer.from(
+    createCredentialVersion(passwordHash, secret),
+    "base64url",
+  );
+  const provided = Buffer.from(providedVersion, "base64url");
+  return (
+    expected.length === provided.length &&
+    timingSafeEqual(expected, provided)
+  );
+}
 
 function sign(encodedPayload: string, secret: string): string {
   return createHmac("sha256", secret)
@@ -16,13 +46,15 @@ function sign(encodedPayload: string, secret: string): string {
 }
 
 export function createAuthToken(
-  payload: Omit<AuthPayload, "exp">,
+  payload: Omit<AuthPayload, "credentialVersion" | "exp">,
   secret: string,
+  passwordHash: string,
   ttlSeconds = AUTH_TOKEN_TTL_SECONDS,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): string {
   const body: AuthPayload = {
     ...payload,
+    credentialVersion: createCredentialVersion(passwordHash, secret),
     exp: nowSeconds + ttlSeconds,
   };
   const encodedPayload = Buffer.from(JSON.stringify(body), "utf8").toString(
@@ -54,6 +86,7 @@ export function verifyAuthToken(
     ) as Partial<AuthPayload>;
     const userId = decoded.userId;
     const email = decoded.email;
+    const credentialVersion = decoded.credentialVersion;
     const exp = decoded.exp;
 
     if (
@@ -62,6 +95,8 @@ export function verifyAuthToken(
       userId <= 0 ||
       typeof email !== "string" ||
       email.length === 0 ||
+      typeof credentialVersion !== "string" ||
+      credentialVersion.length === 0 ||
       typeof exp !== "number" ||
       !Number.isFinite(exp) ||
       exp <= nowSeconds
@@ -69,7 +104,7 @@ export function verifyAuthToken(
       return null;
     }
 
-    return { userId, email, exp };
+    return { userId, email, credentialVersion, exp };
   } catch {
     return null;
   }

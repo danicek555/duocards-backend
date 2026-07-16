@@ -118,7 +118,7 @@ export async function registerFlashcardSetRoutes(
   const { config, prisma } = options;
 
   app.get("/api/v1/flashcard-sets", async (request) => {
-    const auth = requireAuth(request, config);
+    const auth = await requireAuth(request, config, prisma);
     const userExists = await prisma.user.findUnique({
       where: { id: auth.userId },
       select: { id: true },
@@ -151,7 +151,7 @@ export async function registerFlashcardSetRoutes(
     "/api/v1/flashcard-sets",
     { schema: { body: flashcardSetBodySchema } },
     async (request, reply) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const input = normalizeFlashcardSetInput(request.body);
       const submittedIds = input.words
         .map((word) => word.id)
@@ -224,7 +224,7 @@ export async function registerFlashcardSetRoutes(
     "/api/v1/flashcard-sets/:id",
     { schema: { params: idParamsSchema } },
     async (request) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const setId = parsePositiveIntId(request.params.id, "flashcard set");
 
       const flashcardSet = await prisma.flashcardSet.findFirst({
@@ -260,7 +260,7 @@ export async function registerFlashcardSetRoutes(
       },
     },
     async (request) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const setId = parsePositiveIntId(request.params.id, "flashcard set");
       const input = normalizeFlashcardSetInput(request.body);
 
@@ -362,7 +362,7 @@ export async function registerFlashcardSetRoutes(
     "/api/v1/flashcard-sets/:id",
     { schema: { params: idParamsSchema } },
     async (request) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const setId = parsePositiveIntId(request.params.id, "flashcard set");
 
       await prisma.$transaction(async (transaction) => {

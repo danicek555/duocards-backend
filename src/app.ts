@@ -7,6 +7,10 @@ import { loadConfig, type AppConfig } from "./config.js";
 import { ApiError, installErrorHandlers } from "./lib/errors.js";
 import { createDatabase } from "./lib/prisma.js";
 import {
+  createPasswordResetEmailSender,
+  type PasswordResetEmailSender,
+} from "./lib/password-reset-email.js";
+import {
   createVerificationEmailSender,
   type VerificationEmailSender,
 } from "./lib/verification-email.js";
@@ -14,6 +18,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerFlashcardSetRoutes } from "./routes/flashcard-sets.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMediaRoutes } from "./routes/media.js";
+import { registerPasswordResetRoutes } from "./routes/password-reset.js";
 import { registerRegistrationRoutes } from "./routes/registration.js";
 import { registerUserRoutes } from "./routes/user.js";
 
@@ -21,6 +26,7 @@ export interface BuildAppOptions {
   config?: AppConfig;
   prisma?: PrismaClient;
   emailSender?: VerificationEmailSender;
+  passwordResetEmailSender?: PasswordResetEmailSender;
 }
 
 const RATE_LIMIT_ERRORS = {
@@ -40,6 +46,10 @@ const RATE_LIMIT_ERRORS = {
     code: "RATE_LIMIT_VERIFY",
     message: "Too many resend attempts. Please try again later.",
   },
+  "/api/v1/auth/reset-password": {
+    code: "RATE_LIMIT_RESET_PASSWORD",
+    message: "Too many password reset attempts. Please try again later.",
+  },
 } as const;
 
 export async function buildApp(
@@ -51,6 +61,9 @@ export async function buildApp(
     : createDatabase(config.databaseUrl);
   const emailSender =
     options.emailSender ?? createVerificationEmailSender(config);
+  const passwordResetEmailSender =
+    options.passwordResetEmailSender ??
+    createPasswordResetEmailSender(config);
 
   const app = Fastify({
     logger:
@@ -107,6 +120,11 @@ export async function buildApp(
     config,
     prisma: database.prisma,
     emailSender,
+  });
+  await registerPasswordResetRoutes(app, {
+    config,
+    prisma: database.prisma,
+    emailSender: passwordResetEmailSender,
   });
   await registerFlashcardSetRoutes(app, {
     config,

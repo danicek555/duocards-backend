@@ -17,6 +17,7 @@ const config = {
   verificationEmailMode: "resend",
   resendApiKey: null,
   emailFrom: "DuoCards <notifications@example.test>",
+  publicAppUrl: "https://app.example.test",
 } satisfies AppConfig;
 
 function createFailingPrisma(): PrismaClient {

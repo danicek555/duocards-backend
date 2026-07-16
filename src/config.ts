@@ -16,6 +16,7 @@ export interface AppConfig {
   verificationEmailMode: VerificationEmailMode;
   resendApiKey: string | null;
   emailFrom: string;
+  publicAppUrl: string;
 }
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -65,6 +66,39 @@ function formatEmailFrom(value: string | undefined): string {
   return normalized.includes("<") && normalized.includes(">")
     ? normalized
     : `DuoCards <${normalized}>`;
+}
+
+function parsePublicAppUrl(
+  value: string | undefined,
+  nodeEnv: NodeEnvironment,
+  emailMode: VerificationEmailMode,
+): string {
+  const rawValue = requireValue(value, "PUBLIC_APP_URL");
+  let url: URL;
+  try {
+    url = new URL(rawValue);
+  } catch {
+    throw new Error("PUBLIC_APP_URL must be a valid absolute URL");
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("PUBLIC_APP_URL must be an HTTP(S) origin without a path");
+  }
+  if (
+    (nodeEnv === "production" || emailMode === "resend") &&
+    url.protocol !== "https:"
+  ) {
+    throw new Error(
+      "PUBLIC_APP_URL must use HTTPS in production or Resend mode",
+    );
+  }
+  return url.origin;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -130,5 +164,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     verificationEmailMode,
     resendApiKey,
     emailFrom: formatEmailFrom(env.FROM_EMAIL),
+    publicAppUrl: parsePublicAppUrl(
+      env.PUBLIC_APP_URL,
+      nodeEnv,
+      verificationEmailMode,
+    ),
   };
 }

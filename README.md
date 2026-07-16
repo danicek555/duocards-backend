@@ -10,16 +10,19 @@ authentication, read endpoints and private text flashcard-set CRUD.
 - Node.js 20.19.x, 22.12+ or 24+
 - PostgreSQL compatible with `prisma/schema.prisma`
 - An explicit auth secret containing at least 32 random bytes
-- A Resend API key and verified sender for verification emails in production
+- A Resend API key and verified sender for account emails in production
+- An explicit public web origin used in password-reset links
 
 No secret has a source-code fallback. Startup fails when the database URL or
 auth secret is missing. In production auth cookies are always `Secure`,
 `HttpOnly`, `SameSite=Lax`, and scoped to `/`.
 
-Verification delivery defaults to the Resend HTTP API. Configure
+Account email delivery defaults to the Resend HTTP API. Configure
 `RESEND_API_KEY` and `FROM_EMAIL`. Local development can explicitly set
 `VERIFICATION_EMAIL_MODE=console`; this mode is rejected outside
 `NODE_ENV=development`, and production startup fails when Resend has no key.
+Set `PUBLIC_APP_URL` to the web origin that serves `/reset-password`; it must
+be an origin without a path and must use HTTPS in production or Resend mode.
 
 ## Local setup
 
@@ -61,6 +64,8 @@ host or the Mac's LAN address and configure the development transport policy.
 | POST | `/api/v1/auth/register` | No | `{ message, email, requiresVerification }` (201) + `registration` cookie |
 | POST | `/api/v1/auth/verify` | Registration cookie | `{ message, user }` + `auth` cookie |
 | POST | `/api/v1/auth/resend` | Registration cookie for delivery | enumeration-safe `{ message }` |
+| POST | `/api/v1/auth/forgot-password` | No | generic `{ message }` without account disclosure |
+| POST | `/api/v1/auth/reset-password` | Reset token | `{ message }` + cleared `auth` cookie |
 | GET | `/api/v1/auth/me` | Cookie | `{ user }` |
 | POST | `/api/v1/auth/logout` | No | `{ message }` + cleared cookie |
 | GET | `/api/v1/flashcard-sets` | Cookie | `{ flashcardSets }` |
@@ -108,6 +113,9 @@ unforgeable challenge as appropriate:
 - verify: 30 per IP and 10 per challenge per 15 minutes;
 - resend: 20 per IP per 15 minutes, 5 per challenge per 10 minutes, and (only
   after a valid token-bound lookup) 5 per normalized email per 10 minutes.
+- forgot password: 20 per IP per 15 minutes and 5 per caller-IP plus HMAC'd
+  normalized email per 15 minutes; throttling keeps the same 200 response;
+- reset password: 20 per IP and 5 per HMAC'd token per 15 minutes.
 
 Rate-limit failures use the shared error envelope and include `Retry-After`.
 The bundled store is process-local, which matches a single prototype instance;
@@ -121,16 +129,70 @@ incoming `X-Forwarded-For` and sets it from the real connection, with
 users share the gateway's IP bucket; trusting unsanitized forwarding headers
 lets callers choose their own bucket.
 
+## Password reset contract
+
+Forgot password accepts `{ "email": "ada@example.com" }`. For every
+syntactically valid email it returns status 200 with exactly:
+
+```json
+{
+  "message": "If an account with this email exists, we sent a password reset link. Please check your spam or junk folder too."
+}
+```
+
+Unknown accounts, throttling, provider errors, and database errors share this
+response; a silently throttled request also receives `Retry-After`. Invalid or
+missing request fields still use the normal non-enumerating 400 validation
+errors. The email limiter is scoped to caller IP plus an HMAC of the normalized
+email, so one public caller cannot exhaust a victim's bucket for another IP.
+The current synchronous sender is suitable for local development, but an
+existing account performs token storage and an external provider call while an
+unknown account does not. That measurable timing difference means this flow is
+not yet safe to describe as fully enumeration-resistant in public production;
+the durable outbox below is a release gate.
+
+For an existing user, the backend creates a new independent 32-byte random
+token with a 30-minute exact expiry and stores only a domain-separated HMAC.
+Existing active links remain valid. It then delivers
+`${PUBLIC_APP_URL}/reset-password#token=...`; the fragment keeps the one-time
+capability out of HTTP request logs and referrer headers. If delivery fails, only that new
+row is conditionally deleted, leaving earlier links untouched. During the
+cutover, already-issued 64-character legacy tokens remain usable through their
+SHA-256 lookup; all newly issued tokens use HMAC storage.
+
+Reset password accepts `{ "token": "...", "password": "Strong1!" }` and
+applies the same password policy as registration. Invalid, expired, replayed,
+or concurrently consumed tokens return `400 INVALID_OR_EXPIRED_RESET_TOKEN`.
+The transaction first locks the user's row to serialize concurrent resets,
+then conditionally consumes the token against the PostgreSQL wall clock,
+changes the Argon2id password, and deletes every reset token for that user.
+Success returns `{ "message": "Password reset successful. You can now sign
+in." }` and clears the auth cookie in the current client.
+
+Every auth token carries a domain-separated HMAC credential version derived
+from the user's current salted Argon2id password hash. Each protected request
+loads the current email and password hash and compares that version in constant
+time. A successful password reset creates a new salted hash, so all previously
+issued credential-version sessions for that user are rejected on their next
+request, including sessions on other devices. No password hash is exposed in
+the cookie.
+
+A durable server-side session store, refresh-token rotation, per-device session
+management, and server-side logout/revocation remain public-release gates. The
+current logout endpoint only clears the caller's cookie; it cannot selectively
+revoke another still-current session without changing the password.
+
 The prototype deliberately keeps the legacy token wire format:
 
 ```text
 base64url(JSON payload).base64url(HMAC-SHA256 signature)
 ```
 
-Its payload contains `userId`, `email`, and `exp`, and the cookie expires after
-seven days. This is a compatibility bridge, not the final mobile session
-design; refresh-token rotation and server-side session revocation should be
-added before a public mobile release.
+Its payload contains `userId`, `email`, `credentialVersion`, and `exp`, and the
+cookie expires after seven days. Tokens issued before `credentialVersion` was
+introduced are rejected and require a fresh login. This is a compatibility
+bridge, not the final mobile session design; refresh-token rotation and a full
+server-side session store should be added before a public mobile release.
 
 ## Error contract
 
@@ -179,7 +241,7 @@ The `registration_attempts` migration must be deployed before enabling the v1
 registration routes. Abandoned attempts expire cryptographically but remain as
 rows; add a scheduled `expiresAt <= now()` cleanup before public production.
 
-## Registration production gates
+## Identity production gates
 
 Before a multi-instance or public rollout, add both a shared Redis rate-limit
 store and a durable transactional email outbox. The current resend order is
@@ -189,6 +251,14 @@ a newer one. A successful provider call followed by a database failure can
 still deliver a code that was not committed; only an outbox/worker protocol can
 close that external-system transaction gap. Also schedule expired-attempt row
 cleanup and monitor delivery failures without logging codes or raw challenges.
+The durable outbox must cover password-reset delivery as well. The HTTP path
+should enqueue the same small amount of database work for every valid email and
+return before provider I/O; a worker should prepare the token, retry the exact
+encrypted payload with a provider idempotency key, and wipe it after a terminal
+state. This removes the large existing/unknown timing signal and closes the
+provider-acceptance ambiguity around synchronous rollback without exposing
+tokens in logs. The scheduled expiry cleanup must also delete abandoned
+`password_reset_tokens` rows where `expiresAt <= now()`.
 For a privacy-hardened public signup, replace the current explicit
 `409 EMAIL_EXISTS` UX with an enumeration-safe account-recovery flow; do not
 silently turn a registration challenge into passwordless access to an existing

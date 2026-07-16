@@ -33,7 +33,7 @@ export async function registerMediaRoutes(
     "/api/v1/word-images/:id",
     { schema: { params: idParamsSchema } },
     async (request) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const imageId = parsePositiveIntId(request.params.id, "image");
 
       const image = await prisma.wordImage.findUnique({
@@ -59,7 +59,7 @@ export async function registerMediaRoutes(
     "/api/v1/word-audio/:id",
     { schema: { params: idParamsSchema } },
     async (request) => {
-      const auth = requireAuth(request, config);
+      const auth = await requireAuth(request, config, prisma);
       const audioId = parsePositiveIntId(request.params.id, "audio");
 
       const audio = await prisma.wordAudio.findUnique({

@@ -6,6 +6,8 @@ import type { AppConfig } from "../config.js";
 import { createAuthToken } from "./auth-token.js";
 
 const userId = 7;
+const userEmail = "user@example.test";
+const passwordHash = "$argon2id$test-current-password-hash";
 const config = {
   nodeEnv: "test",
   host: "127.0.0.1",
@@ -19,11 +21,13 @@ const config = {
   verificationEmailMode: "resend",
   resendApiKey: null,
   emailFrom: "DuoCards <notifications@example.test>",
+  publicAppUrl: "https://app.example.test",
 } satisfies AppConfig;
 
 const authCookie = `auth=${createAuthToken(
-  { userId, email: "user@example.test" },
+  { userId, email: userEmail },
   config.authSecret,
+  passwordHash,
 )}`;
 
 interface WordWriteData {
@@ -50,6 +54,13 @@ interface CreateSetData {
 
 function transactionalPrisma(transaction: object): PrismaClient {
   return {
+    user: {
+      findUnique: async () => ({
+        id: userId,
+        email: userEmail,
+        password: passwordHash,
+      }),
+    },
     async $transaction<T>(
       callback: (client: object) => Promise<T>,
     ): Promise<T> {

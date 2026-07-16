@@ -16,7 +16,7 @@ export async function registerUserRoutes(
   const { config, prisma } = options;
 
   app.get("/api/v1/user/coins", async (request) => {
-    const auth = requireAuth(request, config);
+    const auth = await requireAuth(request, config, prisma);
     const user = await prisma.user.findUnique({
       where: { id: auth.userId },
       select: { coins: true },
