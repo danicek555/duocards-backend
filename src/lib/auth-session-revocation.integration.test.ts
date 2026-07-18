@@ -184,7 +184,23 @@ test("password reset revokes old credential-version sessions", async (t) => {
     payload: { email: user.email, password: oldPassword },
   });
   assert.equal(oldLogin.statusCode, 200);
+  assert.doesNotMatch(String(oldLogin.headers["set-cookie"]), /Max-Age=/u);
   const oldCookie = authCookie(oldLogin);
+
+  const rememberedLogin = await app.inject({
+    method: "POST",
+    url: "/api/v1/auth/login",
+    payload: {
+      email: user.email,
+      password: oldPassword,
+      rememberMe: true,
+    },
+  });
+  assert.equal(rememberedLogin.statusCode, 200);
+  assert.match(
+    String(rememberedLogin.headers["set-cookie"]),
+    /Max-Age=2592000/u,
+  );
 
   const beforeReset = await app.inject({
     method: "GET",

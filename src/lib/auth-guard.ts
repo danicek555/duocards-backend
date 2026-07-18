@@ -41,13 +41,25 @@ export async function requireAuth(
   return payload;
 }
 
-export function authCookieOptions(config: AppConfig) {
+export function authCookieOptions(
+  config: AppConfig,
+  maxAgeSeconds = AUTH_TOKEN_TTL_SECONDS,
+) {
   return {
     path: "/",
     httpOnly: true,
     secure: config.cookieSecure,
     sameSite: "lax" as const,
-    maxAge: AUTH_TOKEN_TTL_SECONDS,
+    maxAge: maxAgeSeconds,
+  };
+}
+
+export function sessionAuthCookieOptions(config: AppConfig) {
+  return {
+    path: "/",
+    httpOnly: true,
+    secure: config.cookieSecure,
+    sameSite: "lax" as const,
   };
 }
 

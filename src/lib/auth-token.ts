@@ -9,6 +9,8 @@ export interface AuthPayload {
 
 export const AUTH_COOKIE_NAME = "auth";
 export const AUTH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_AUTH_TOKEN_TTL_SECONDS = 60 * 60 * 24;
+export const REMEMBERED_AUTH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const CREDENTIAL_VERSION_DOMAIN =
   "duocards-auth-credential-version:v1\0";
 
