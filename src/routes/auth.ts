@@ -5,10 +5,13 @@ import {
   authCookieOptions,
   clearAuthCookieOptions,
   requireAuth,
+  sessionAuthCookieOptions,
 } from "../lib/auth-guard.js";
 import {
   AUTH_COOKIE_NAME,
   createAuthToken,
+  REMEMBERED_AUTH_TOKEN_TTL_SECONDS,
+  SESSION_AUTH_TOKEN_TTL_SECONDS,
 } from "../lib/auth-token.js";
 import { ApiError } from "../lib/errors.js";
 import { verifyPassword } from "../lib/password.js";
@@ -21,6 +24,7 @@ interface AuthRouteOptions {
 interface LoginBody {
   email: string;
   password: string;
+  rememberMe?: boolean;
 }
 
 const loginBodySchema = {
@@ -30,6 +34,7 @@ const loginBodySchema = {
   properties: {
     email: { type: "string", minLength: 3, maxLength: 320 },
     password: { type: "string", minLength: 1, maxLength: 1024 },
+    rememberMe: { type: "boolean" },
   },
 } as const;
 
@@ -55,6 +60,7 @@ export async function registerAuthRoutes(
     async (request, reply) => {
       const email = request.body.email.trim().toLowerCase();
       const password = request.body.password;
+      const rememberMe = request.body.rememberMe === true;
       if (!email || !password) {
         throw new ApiError(
           400,
@@ -90,11 +96,16 @@ export async function registerAuthRoutes(
         { userId: user.id, email: user.email },
         config.authSecret,
         user.password,
+        rememberMe
+          ? REMEMBERED_AUTH_TOKEN_TTL_SECONDS
+          : SESSION_AUTH_TOKEN_TTL_SECONDS,
       );
       reply.setCookie(
         AUTH_COOKIE_NAME,
         token,
-        authCookieOptions(config),
+        rememberMe
+          ? authCookieOptions(config, REMEMBERED_AUTH_TOKEN_TTL_SECONDS)
+          : sessionAuthCookieOptions(config),
       );
 
       return reply.status(200).send({
