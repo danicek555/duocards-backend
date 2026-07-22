@@ -14,8 +14,3 @@ CREATE INDEX "completion_rewards_userId_createdAt_idx" ON "completion_rewards"("
 
 -- AddForeignKey
 ALTER TABLE "completion_rewards" ADD CONSTRAINT "completion_rewards_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-
-
-
-

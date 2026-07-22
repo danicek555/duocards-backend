@@ -1,10 +1,9 @@
 # DuoCards Fastify backend
 
-A standalone TypeScript backend shared by the
-[DuoCards web app](https://github.com/danicek555/Duocards) and the
-[native iOS app](https://github.com/danicek555/duocards-ios). The current
-scope is a versioned `/api/v1` facade over the existing PostgreSQL tables with
-shared authentication, read endpoints and private text flashcard-set CRUD.
+An isolated TypeScript backend for the native DuoCards client. It does not
+modify or import the root Next.js application. The current scope is a
+versioned `/api/v1` facade over the existing PostgreSQL tables with shared
+authentication, read endpoints and private text flashcard-set CRUD.
 
 ## Requirements
 
@@ -55,20 +54,6 @@ prefix in `DUOCARDS_API_BASE_URL`, otherwise requests would contain it twice.
 For a physical iPhone, replace `localhost` with a reachable HTTPS development
 host or the Mac's LAN address and configure the development transport policy.
 
-## Web app connection
-
-The Next.js web repository keeps `/shared-api` as a same-origin proxy. Point it
-at this standalone service in the web app's `.env.local`:
-
-```dotenv
-SHARED_BACKEND_URL=http://127.0.0.1:4000
-NEXT_PUBLIC_SHARED_API_BASE_URL=/shared-api
-```
-
-Use the deployed HTTPS backend origin for `SHARED_BACKEND_URL` in production.
-The browser continues to call `/shared-api`, so its credentialed auth cookies
-remain same-origin from the browser's perspective.
-
 ## Endpoints
 
 | Method | Path | Authentication | Compatible success payload |
@@ -91,6 +76,25 @@ remain same-origin from the browser's perspective.
 | GET | `/api/v1/user/coins` | Cookie | `{ coins }` |
 | GET | `/api/v1/word-images/:id` | Cookie + ownership | `{ image }` |
 | GET | `/api/v1/word-audio/:id` | Cookie + ownership | `{ audio }` |
+| POST | `/api/v1/live/sessions` | Host cookie + set ownership | `{ session, hostToken }` (201) |
+| POST | `/api/v1/live/sessions/join` | No account | `{ session, participant, playerToken }` (201) |
+| GET | `/api/v1/live/sessions/:id` | Host/player bearer token | reconnect snapshot |
+| POST | `/api/v1/live/sessions/:id/start` | Host bearer token | first authoritative round |
+| POST | `/api/v1/live/sessions/:id/answers` | Player bearer token | idempotent scored answer (201) |
+| POST | `/api/v1/live/sessions/:id/advance` | Host bearer token | reveal or next round |
+| POST | `/api/v1/live/sessions/:id/leave` | Player bearer token | remove player presence (204) |
+| POST | `/api/v1/live/sessions/:id/finish` | Host bearer token | final snapshot |
+
+Live Game v2 uses contract version `1`. Creating a room requires an authenticated
+host and verifies ownership of every selected set. Joiners receive a signed,
+six-hour player capability; host and player tokens are role-scoped and accepted
+only for their session. Correct answers remain server-side until the session is
+in `REVEAL`. Every player can submit at most one answer per round, while the
+`idempotencyKey` safely returns the original result for a retried request.
+
+This foundation currently exposes authoritative HTTPS commands and reconnect
+snapshots. Realtime delivery will publish these server decisions through a
+room-scoped Ably channel; clients must never publish score or reveal events.
 
 Registration request bodies remain stable:
 
@@ -241,8 +245,8 @@ history currently used by the web application.
 
 Before the first `migrate deploy`, compare this history and the target
 database's `_prisma_migrations` records against a disposable snapshot. Once the
-baseline is confirmed, treat `prisma/schema.prisma` and
-`prisma/migrations` as the target source of truth for future backend
+baseline is confirmed, treat `backend/prisma/schema.prisma` and
+`backend/prisma/migrations` as the target source of truth for future backend
 schema changes. Never run `prisma migrate reset` or an unreviewed `prisma db
 push` against an existing DuoCards database.
 
@@ -291,9 +295,3 @@ npm test
 npm run build
 npm start
 ```
-
-`prisma generate` is intentionally allowed to run without a database URL. This
-keeps schema-only Cloud Run buildpack builds independent of runtime secrets.
-The running server and database commands still require a real `DATABASE_URL`,
-`PRISMA_DATABASE_URL`, or `DIRECT_DATABASE_URL`; configure it on the Cloud Run
-service before the revision starts.

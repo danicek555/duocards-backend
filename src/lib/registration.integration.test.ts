@@ -81,6 +81,7 @@ function createMemoryPrisma(options: MemoryOptions = {}) {
     attemptUpdates: 0,
     userFinds: 0,
     userCreates: 0,
+    coinTransactionCreates: 0,
   };
 
   const user = {
@@ -164,7 +165,20 @@ function createMemoryPrisma(options: MemoryOptions = {}) {
       return { count: 1 };
     },
   };
-  const transactionClient = { user, registrationAttempt };
+  const coinTransactions: Array<{
+    userId: number;
+    amount: number;
+    balanceAfter: number;
+    type: string;
+  }> = [];
+  const coinTransaction = {
+    async create(args: { data: (typeof coinTransactions)[number] }) {
+      stats.coinTransactionCreates += 1;
+      coinTransactions.push(args.data);
+      return { id: coinTransactions.length, ...args.data };
+    },
+  };
+  const transactionClient = { user, registrationAttempt, coinTransaction };
   const rawClient = {
     ...transactionClient,
     async $transaction<T>(
@@ -178,6 +192,7 @@ function createMemoryPrisma(options: MemoryOptions = {}) {
     client: rawClient as unknown as PrismaClient,
     attempts,
     users,
+    coinTransactions,
     stats,
   };
 }
@@ -376,6 +391,15 @@ test("verify creates a new user, removes every email attempt, and swaps cookies"
 
   assert.equal(response.statusCode, 200);
   assert.equal(memory.stats.userCreates, 1);
+  assert.equal(memory.stats.coinTransactionCreates, 1);
+  assert.deepEqual(memory.coinTransactions, [
+    {
+      userId: memory.users[0]!.id,
+      amount: 100,
+      balanceAfter: 100,
+      type: "WELCOME_BONUS",
+    },
+  ]);
   assert.equal(memory.users.length, 1);
   assert.equal(memory.users[0]!.emailVerified, true);
   assert.equal(memory.attempts.length, 0);

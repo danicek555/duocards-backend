@@ -18,6 +18,7 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerFlashcardSetRoutes } from "./routes/flashcard-sets.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerMediaRoutes } from "./routes/media.js";
+import { registerLiveSessionRoutes } from "./routes/live-sessions.js";
 import { registerPasswordResetRoutes } from "./routes/password-reset.js";
 import { registerRegistrationRoutes } from "./routes/registration.js";
 import { registerUserRoutes } from "./routes/user.js";
@@ -132,6 +133,10 @@ export async function buildApp(
   });
   await registerUserRoutes(app, { config, prisma: database.prisma });
   await registerMediaRoutes(app, { config, prisma: database.prisma });
+  await registerLiveSessionRoutes(app, {
+    config,
+    prisma: database.prisma,
+  });
 
   app.addHook("onClose", async () => {
     await database.close();

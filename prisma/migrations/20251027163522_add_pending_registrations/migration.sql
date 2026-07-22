@@ -18,4 +18,3 @@ CREATE UNIQUE INDEX "pending_registrations_email_key" ON "pending_registrations"
 ALTER TABLE "users" DROP COLUMN "verificationCode",
 DROP COLUMN "verificationCodeExpires",
 ALTER COLUMN "emailVerified" SET DEFAULT true;
-
