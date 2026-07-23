@@ -96,6 +96,7 @@ export function scoreLiveGameAnswer(
   isCorrect: boolean,
   responseTimeMs: number,
   timeLimitSeconds: number,
+  streakBefore = 0,
 ): number {
   if (!isCorrect) return 0;
   if (modeId === "accuracy") return 1_000;
@@ -103,5 +104,31 @@ export function scoreLiveGameAnswer(
 
   const limitMs = Math.max(1, timeLimitSeconds * 1_000);
   const remainingRatio = Math.max(0, 1 - responseTimeMs / limitMs);
-  return 500 + Math.floor(500 * remainingRatio);
+  const base = 500 + Math.floor(500 * remainingRatio);
+  if (modeId === "streak_combo") {
+    return Math.round(base * liveGameStreakMultiplier(streakBefore));
+  }
+  return base;
+}
+
+/**
+ * Multiplier applied to the answer that extends a streak: the 1st correct
+ * answer scores x1, the 2nd x1.5, the 3rd x2 … capped at x3 (5th+).
+ * `streakBefore` is the number of consecutive correct answers so far.
+ */
+export function liveGameStreakMultiplier(streakBefore: number): number {
+  return 1 + Math.min(Math.max(0, streakBefore), 4) * 0.5;
+}
+
+/**
+ * Survival: players who answered wrong (or not at all) are knocked out at
+ * reveal time. Safe-round rule — when every remaining player would be
+ * eliminated at once, nobody is, so the game always has a winner.
+ */
+export function evaluateSurvivalElimination(
+  alivePlayers: readonly { id: string; answeredCorrect: boolean }[],
+): string[] {
+  const losers = alivePlayers.filter((player) => !player.answeredCorrect);
+  if (losers.length === 0 || losers.length === alivePlayers.length) return [];
+  return losers.map((player) => player.id);
 }

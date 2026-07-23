@@ -4,6 +4,8 @@ export const LIVE_GAME_MODE_IDS = [
   "classic_arena",
   "accuracy",
   "co_op_mission",
+  "streak_combo",
+  "survival",
 ] as const;
 
 export type LiveGameModeId = (typeof LIVE_GAME_MODE_IDS)[number];
@@ -24,6 +26,8 @@ export const LIVE_GAME_MODE_VERSIONS: Record<LiveGameModeId, number> = {
   classic_arena: 1,
   accuracy: 1,
   co_op_mission: 1,
+  streak_combo: 1,
+  survival: 1,
 };
 
 export interface LiveGameSettings {
@@ -38,6 +42,13 @@ export interface LiveGameParticipantSnapshot {
   score: number;
   correct: number;
   total: number;
+  /** Consecutive correct answers right now (streak_combo). */
+  streak: number;
+  bestStreak: number;
+  /** Survival: knocked out, but may keep practicing. */
+  eliminated: boolean;
+  practiceCorrect: number;
+  practiceTotal: number;
 }
 
 export interface LiveGameQuestionSnapshot {

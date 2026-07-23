@@ -20,6 +20,7 @@ import {
   normalizeAnswer,
   normalizeLiveGameRoomCode,
   normalizeNickname,
+  evaluateSurvivalElimination,
   scoreLiveGameAnswer,
 } from "../live-game/engine.js";
 import {
@@ -152,7 +153,8 @@ async function loadSnapshot(
     include: {
       participants: {
         where: { leftAt: null },
-        orderBy: [{ score: "desc" }, { joinedAt: "asc" }],
+        // Eliminated (survival) players sink below everyone still alive.
+        orderBy: [{ eliminated: "asc" }, { score: "desc" }, { joinedAt: "asc" }],
       },
     },
   });
@@ -181,7 +183,11 @@ async function loadSnapshot(
     : null;
   const [answeredCount, viewerAnswer] = currentRound
     ? await Promise.all([
-        prisma.liveAnswer.count({ where: { roundId: currentRound.id } }),
+        // Practice answers from eliminated players are not part of the
+        // host's "answered X" progress.
+        prisma.liveAnswer.count({
+          where: { roundId: currentRound.id, participant: { eliminated: false } },
+        }),
         viewerParticipantId
           ? prisma.liveAnswer.findUnique({
               where: {
@@ -238,6 +244,11 @@ async function loadSnapshot(
       score: participant.score,
       correct: participant.correct,
       total: participant.total,
+      streak: participant.streak,
+      bestStreak: participant.bestStreak,
+      eliminated: participant.eliminated,
+      practiceCorrect: participant.practiceCorrect,
+      practiceTotal: participant.practiceTotal,
     })),
     viewer: viewerParticipantId
       ? {
@@ -582,7 +593,7 @@ export async function registerLiveSessionRoutes(
         };
       }
 
-      const [session, round, previousAnswer] = await Promise.all([
+      const [session, round, previousAnswer, participant] = await Promise.all([
         prisma.liveSession.findUnique({ where: { id: request.params.id } }),
         prisma.liveRound.findFirst({
           where: { id: request.body.roundId, sessionId: request.params.id },
@@ -595,8 +606,9 @@ export async function registerLiveSessionRoutes(
             },
           },
         }),
+        prisma.liveParticipant.findUnique({ where: { id: participantId } }),
       ]);
-      if (!session || !round) {
+      if (!session || !round || !participant) {
         throw new ApiError(404, "LIVE_ROUND_NOT_FOUND", "Live round not found");
       }
       if (previousAnswer) {
@@ -630,12 +642,19 @@ export async function registerLiveSessionRoutes(
         0,
         Math.min(Date.now() - round.startedAt.getTime(), round.timeLimitSeconds * 1_000),
       );
-      const points = scoreLiveGameAnswer(
-        session.modeId,
-        isCorrect,
-        responseTimeMs,
-        round.timeLimitSeconds,
-      );
+      // Eliminated survival players keep answering as practice: no points,
+      // no effect on the game — only their practice counters move.
+      const isPractice = participant.eliminated;
+      const points = isPractice
+        ? 0
+        : scoreLiveGameAnswer(
+            session.modeId,
+            isCorrect,
+            responseTimeMs,
+            round.timeLimitSeconds,
+            participant.streak,
+          );
+      const nextStreak = isCorrect ? participant.streak + 1 : 0;
 
       try {
         await prisma.$transaction(async (transaction) => {
@@ -653,12 +672,20 @@ export async function registerLiveSessionRoutes(
           });
           await transaction.liveParticipant.update({
             where: { id: participantId },
-            data: {
-              score: { increment: points },
-              correct: { increment: isCorrect ? 1 : 0 },
-              total: { increment: 1 },
-              lastSeenAt: new Date(),
-            },
+            data: isPractice
+              ? {
+                  practiceCorrect: { increment: isCorrect ? 1 : 0 },
+                  practiceTotal: { increment: 1 },
+                  lastSeenAt: new Date(),
+                }
+              : {
+                  score: { increment: points },
+                  correct: { increment: isCorrect ? 1 : 0 },
+                  total: { increment: 1 },
+                  streak: nextStreak,
+                  bestStreak: Math.max(participant.bestStreak, nextStreak),
+                  lastSeenAt: new Date(),
+                },
           });
           await transaction.liveSession.update({
             where: { id: session.id },
@@ -758,6 +785,35 @@ export async function registerLiveSessionRoutes(
             where: { id: currentRound.id },
             data: { state: "REVEAL", revealedAt: now },
           });
+
+          if (session.modeId === "survival") {
+            const alive = await transaction.liveParticipant.findMany({
+              where: { sessionId: session.id, leftAt: null, eliminated: false },
+              select: { id: true },
+            });
+            const answers = await transaction.liveAnswer.findMany({
+              where: {
+                roundId: currentRound.id,
+                participantId: { in: alive.map((player) => player.id) },
+              },
+              select: { participantId: true, isCorrect: true },
+            });
+            const answeredCorrect = new Map(
+              answers.map((answer) => [answer.participantId, answer.isCorrect]),
+            );
+            const toEliminate = evaluateSurvivalElimination(
+              alive.map((player) => ({
+                id: player.id,
+                answeredCorrect: answeredCorrect.get(player.id) === true,
+              })),
+            );
+            if (toEliminate.length > 0) {
+              await transaction.liveParticipant.updateMany({
+                where: { id: { in: toEliminate } },
+                data: { eliminated: true, streak: 0 },
+              });
+            }
+          }
         });
       } else if (session.status === "REVEAL") {
         const nextRound = await prisma.liveRound.findFirst({
@@ -768,7 +824,13 @@ export async function registerLiveSessionRoutes(
           },
           orderBy: { sequence: "asc" },
         });
-        if (!nextRound) {
+        // Survival ends early once at most one player is still standing.
+        const survivalOver =
+          session.modeId === "survival" &&
+          (await prisma.liveParticipant.count({
+            where: { sessionId: session.id, leftAt: null, eliminated: false },
+          })) <= 1;
+        if (!nextRound || survivalOver) {
           const finished = await prisma.liveSession.updateMany({
             where: {
               id: session.id,

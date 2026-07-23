@@ -262,6 +262,7 @@ model LiveGamePlayer {
   score      Int      @default(0)
   correct    Int      @default(0)
   total      Int      @default(0)
+  eliminated Boolean  @default(false)
   isWinner   Boolean  @default(false)
   liveGame   LiveGame @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
 
@@ -301,6 +302,11 @@ model LiveParticipant {
   score      Int          @default(0)
   correct    Int          @default(0)
   total      Int          @default(0)
+  streak          Int          @default(0)
+  bestStreak      Int          @default(0)
+  eliminated      Boolean      @default(false)
+  practiceCorrect Int          @default(0)
+  practiceTotal   Int          @default(0)
   joinedAt   DateTime     @default(now())
   lastSeenAt DateTime     @default(now())
   leftAt     DateTime?
