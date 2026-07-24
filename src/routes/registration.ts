@@ -33,6 +33,7 @@ import type { VerificationEmailSender } from "../lib/verification-email.js";
 
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1_000;
 const TEN_MINUTES_MS = 10 * 60 * 1_000;
+const WELCOME_COINS = 100;
 const RESEND_SUCCESS_MESSAGE =
   "If a pending registration exists, a verification code has been sent.";
 
@@ -364,6 +365,14 @@ export async function registerRegistrationRoutes(
                 locale: true,
                 emailVerified: true,
                 createdAt: true,
+              },
+            });
+            await transaction.coinTransaction.create({
+              data: {
+                userId: user.id,
+                amount: WELCOME_COINS,
+                balanceAfter: WELCOME_COINS,
+                type: "WELCOME_BONUS",
               },
             });
             await transaction.registrationAttempt.deleteMany({

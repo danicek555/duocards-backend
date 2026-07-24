@@ -1,0 +1,34 @@
+{
+  "contractVersion": 1,
+  "modeIds": [
+    "classic_arena",
+    "accuracy",
+    "co_op_mission",
+    "streak_combo",
+    "survival",
+    "sprint",
+    "marathon",
+    "team_battle",
+    "risk_bet"
+  ],
+  "sessionStatuses": [
+    "LOBBY",
+    "COUNTDOWN",
+    "QUESTION",
+    "LOCKED",
+    "REVEAL",
+    "SCOREBOARD",
+    "FINISHED"
+  ],
+  "eventTypes": [
+    "room.created",
+    "player.joined",
+    "game.started",
+    "round.started",
+    "answer.accepted",
+    "round.revealed",
+    "score.changed",
+    "game.finished"
+  ],
+  "commands": ["join", "start", "submitAnswer", "advance", "finish"]
+}

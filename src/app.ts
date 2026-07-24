@@ -1,8 +1,10 @@
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import type { PrismaClient } from "@prisma/client";
 import Fastify, { type FastifyInstance } from "fastify";
+import { Redis } from "ioredis";
 import { loadConfig, type AppConfig } from "./config.js";
 import { ApiError, installErrorHandlers } from "./lib/errors.js";
 import { createDatabase } from "./lib/prisma.js";
@@ -17,6 +19,7 @@ import {
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerFlashcardSetRoutes } from "./routes/flashcard-sets.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerLiveSessionRoutes } from "./routes/live-sessions.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerPasswordResetRoutes } from "./routes/password-reset.js";
 import { registerRegistrationRoutes } from "./routes/registration.js";
@@ -80,10 +83,56 @@ export async function buildApp(
 
   installErrorHandlers(app);
 
+  // Security headers. This is a JSON/data API with no document surface, so the
+  // strictest content policy applies and framing is denied outright. HSTS is
+  // only meaningful over HTTPS, so it is limited to production.
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    referrerPolicy: { policy: "no-referrer" },
+    hsts:
+      config.nodeEnv === "production"
+        ? { maxAge: 31_536_000, includeSubDomains: true, preload: true }
+        : false,
+  });
+
+  // Authenticated API responses (and media data URLs) must never be cached by
+  // shared caches or the browser.
+  app.addHook("onSend", async (_request, reply, payload) => {
+    if (!reply.hasHeader("Cache-Control")) {
+      reply.header("Cache-Control", "no-store");
+    }
+    return payload;
+  });
+
   await app.register(cookie);
+
+  // Rate limiting needs a store shared across instances; the default in-process
+  // store resets on every cold start and is per-container, so on a horizontally
+  // scaled platform (Cloud Run) it cannot enforce a real limit. Use Redis when
+  // configured and warn loudly in production when it is missing.
+  let rateLimitRedis: Redis | undefined;
+  if (config.redisUrl) {
+    rateLimitRedis = new Redis(config.redisUrl, {
+      connectTimeout: 500,
+      maxRetriesPerRequest: 1,
+    });
+    rateLimitRedis.on("error", (error: Error) => {
+      app.log.error({ err: error }, "Rate-limit Redis connection error");
+    });
+  } else if (config.nodeEnv === "production") {
+    app.log.warn(
+      "REDIS_URL is not set — rate limiting uses an in-process store that does not hold across multiple instances or restarts",
+    );
+  }
 
   await app.register(rateLimit, {
     global: false,
+    redis: rateLimitRedis,
     errorResponseBuilder: (request, context) => {
       const routeError =
         RATE_LIMIT_ERRORS[
@@ -114,7 +163,7 @@ export async function buildApp(
     allowedHeaders: ["Content-Type", "X-Request-Id"],
   });
 
-  await registerHealthRoutes(app);
+  await registerHealthRoutes(app, { prisma: database.prisma });
   await registerAuthRoutes(app, { config, prisma: database.prisma });
   await registerRegistrationRoutes(app, {
     config,
@@ -132,8 +181,15 @@ export async function buildApp(
   });
   await registerUserRoutes(app, { config, prisma: database.prisma });
   await registerMediaRoutes(app, { config, prisma: database.prisma });
+  await registerLiveSessionRoutes(app, {
+    config,
+    prisma: database.prisma,
+  });
 
   app.addHook("onClose", async () => {
+    if (rateLimitRedis) {
+      await rateLimitRedis.quit().catch(() => undefined);
+    }
     await database.close();
   });
 

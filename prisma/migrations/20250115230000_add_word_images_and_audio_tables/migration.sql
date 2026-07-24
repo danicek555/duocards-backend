@@ -35,7 +35,7 @@ DECLARE
 BEGIN
     -- Check if imageUrl column exists before migrating
     IF EXISTS (
-        SELECT 1 FROM information_schema.columns 
+        SELECT 1 FROM information_schema.columns
         WHERE table_name = 'words' AND column_name = 'imageUrl'
     ) THEN
         FOR word_record IN SELECT id, "imageUrl", "audioUrl" FROM words WHERE "imageUrl" IS NOT NULL OR "audioUrl" IS NOT NULL
@@ -45,16 +45,16 @@ BEGIN
                 INSERT INTO word_images ("dataUrl", "mimeType", "createdAt", "updatedAt")
                 VALUES (word_record."imageUrl", 'image/png', NOW(), NOW())
                 RETURNING id INTO image_id;
-                
+
                 UPDATE words SET "imageId" = image_id WHERE id = word_record.id;
             END IF;
-            
+
             -- Migrate audio
             IF word_record."audioUrl" IS NOT NULL AND word_record."audioUrl" != '' THEN
                 INSERT INTO word_audio ("dataUrl", "mimeType", "createdAt", "updatedAt")
                 VALUES (word_record."audioUrl", 'audio/mpeg', NOW(), NOW())
                 RETURNING id INTO audio_id;
-                
+
                 UPDATE words SET "audioId" = audio_id WHERE id = word_record.id;
             END IF;
         END LOOP;
@@ -74,10 +74,3 @@ ALTER TABLE "words" ADD CONSTRAINT "words_audioId_fkey" FOREIGN KEY ("audioId") 
 -- Drop old columns if they exist (commented out for safety - uncomment after verifying migration)
 -- ALTER TABLE "words" DROP COLUMN IF EXISTS "imageUrl";
 -- ALTER TABLE "words" DROP COLUMN IF EXISTS "audioUrl";
-
-
-
-
-
-
-

@@ -55,6 +55,14 @@ prefix in `DUOCARDS_API_BASE_URL`, otherwise requests would contain it twice.
 For a physical iPhone, replace `localhost` with a reachable HTTPS development
 host or the Mac's LAN address and configure the development transport policy.
 
+## Cloud Run vs. local backend
+
+When Cloud Run is enabled, all shared traffic goes through the service built
+from **this** repository, so it must stay synchronized with production; when
+Cloud Run is off, clients fall back to a local backend (automatic for the web
+app, a user-facing server setting on iOS). See
+[docs/CLOUD_RUN_AND_LOCAL_BACKEND.md](docs/CLOUD_RUN_AND_LOCAL_BACKEND.md).
+
 ## Web app connection
 
 The Next.js web repository keeps `/shared-api` as a same-origin proxy. Point it
@@ -73,8 +81,10 @@ remain same-origin from the browser's perspective.
 
 | Method | Path | Authentication | Compatible success payload |
 | --- | --- | --- | --- |
-| GET | `/health` | No | health metadata |
-| GET | `/api/v1/health` | No | health metadata |
+| GET | `/health` | No | liveness metadata |
+| GET | `/api/v1/health` | No | liveness metadata |
+| GET | `/ready` | No | readiness metadata (503 when the database is unreachable) |
+| GET | `/api/v1/ready` | No | readiness metadata (503 when the database is unreachable) |
 | POST | `/api/v1/auth/login` | No | `{ message, user }` + `auth` cookie |
 | POST | `/api/v1/auth/register` | No | `{ message, email, requiresVerification }` (201) + `registration` cookie |
 | POST | `/api/v1/auth/verify` | Registration cookie | `{ message, user }` + `auth` cookie |

@@ -26,8 +26,12 @@ model User {
   flashcardSets     FlashcardSet[]
   words             Word[]
   completionRewards CompletionReward[]
+  coinTransactions  CoinTransaction[]
+  studySessions     StudySession[]
+  studyReviews      StudyReview[]
   passwordResets    PasswordResetToken[]
   liveGames         LiveGame[]
+  liveSessions      LiveSession[]
 
   @@map("users")
 }
@@ -89,6 +93,8 @@ model FlashcardSet {
   updatedAt      DateTime @updatedAt
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   words          Word[]
+  studySessions  StudySession[]
+  studyReviews   StudyReview[]
 
   @@map("flashcard_sets")
 }
@@ -105,11 +111,22 @@ model Word {
   audioId        Int?          @unique
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+  reviewIntervalDays Int       @default(0)
+  reviewEase         Int       @default(220)
+  reviewStreak       Int       @default(0)
+  reviewCount        Int       @default(0)
+  correctReviewCount Int       @default(0)
+  lapseCount         Int       @default(0)
+  lastReviewedAt     DateTime?
+  nextReviewAt       DateTime?
   audio          WordAudio?    @relation(fields: [audioId], references: [id])
   flashcardSet   FlashcardSet? @relation(fields: [flashcardSetId], references: [id], onDelete: Cascade)
   image          WordImage?    @relation(fields: [imageId], references: [id])
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyReviews   StudyReview[]
 
+  @@index([userId, nextReviewAt])
+  @@index([flashcardSetId, nextReviewAt])
   @@map("words")
 }
 
@@ -150,11 +167,75 @@ model CompletionReward {
   userId         Int
   amount         Int
   flashcardSetId Int
+  claimDate      DateTime? @db.Date
+  studySessionId String?   @unique @db.Uuid
   createdAt      DateTime @default(now())
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studySession   StudySession? @relation(fields: [studySessionId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
+  @@unique([userId, flashcardSetId, claimDate])
   @@map("completion_rewards")
+}
+
+model StudySession {
+  id                String            @id @default(uuid()) @db.Uuid
+  userId            Int
+  flashcardSetId    Int
+  wordIds           Int[]             @default([])
+  totalWords        Int
+  isFullSet         Boolean           @default(false)
+  isScheduledReview Boolean           @default(true)
+  reviewCount       Int               @default(0)
+  correctCount      Int               @default(0)
+  startedAt         DateTime          @default(now())
+  completedAt       DateTime?
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flashcardSet      FlashcardSet      @relation(fields: [flashcardSetId], references: [id], onDelete: Cascade)
+  reviews           StudyReview[]
+  completionReward  CompletionReward?
+
+  @@index([userId, startedAt])
+  @@index([flashcardSetId, startedAt])
+  @@map("study_sessions")
+}
+
+model StudyReview {
+  id                 String       @id @default(uuid()) @db.Uuid
+  sessionId          String       @db.Uuid
+  userId             Int
+  wordId             Int
+  flashcardSetId     Int
+  idempotencyKey     String       @unique @db.VarChar(64)
+  rating             String       @db.VarChar(12)
+  intervalBeforeDays Int
+  intervalAfterDays  Int
+  easeAfter          Int
+  nextReviewAt       DateTime
+  reviewedAt         DateTime     @default(now())
+  session            StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word               Word         @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  flashcardSet       FlashcardSet @relation(fields: [flashcardSetId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, reviewedAt])
+  @@index([userId, reviewedAt])
+  @@index([wordId, reviewedAt])
+  @@map("study_reviews")
+}
+
+model CoinTransaction {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  amount       Int
+  balanceAfter Int
+  type         String   @db.VarChar(64)
+  referenceId  String?  @db.VarChar(128)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("coin_transactions")
 }
 
 model LiveGame {
@@ -181,9 +262,111 @@ model LiveGamePlayer {
   score      Int      @default(0)
   correct    Int      @default(0)
   total      Int      @default(0)
+  eliminated Boolean  @default(false)
   isWinner   Boolean  @default(false)
   liveGame   LiveGame @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
 
   @@index([liveGameId])
   @@map("live_game_players")
+}
+
+model LiveSession {
+  id             String            @id @default(uuid())
+  hostUserId     Int
+  roomCode       String            @unique @db.VarChar(8)
+  modeId         String            @db.VarChar(40)
+  modeVersion    Int               @default(1)
+  status         String            @default("LOBBY") @db.VarChar(20)
+  sequence       Int               @default(0)
+  settings       Json
+  currentRoundId String?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  host           User              @relation(fields: [hostUserId], references: [id], onDelete: Cascade)
+  participants   LiveParticipant[]
+  rounds         LiveRound[]
+
+  @@index([hostUserId, createdAt])
+  @@index([status, expiresAt])
+  @@map("live_sessions")
+}
+
+model LiveParticipant {
+  id         String       @id @default(uuid())
+  sessionId  String
+  nickname   String       @db.VarChar(40)
+  role       String       @default("PLAYER") @db.VarChar(16)
+  score      Int          @default(0)
+  correct    Int          @default(0)
+  total      Int          @default(0)
+  streak          Int          @default(0)
+  bestStreak      Int          @default(0)
+  eliminated      Boolean      @default(false)
+  practiceCorrect Int          @default(0)
+  practiceTotal   Int          @default(0)
+  team            String?      @db.VarChar(8)
+  joinedAt   DateTime     @default(now())
+  lastSeenAt DateTime     @default(now())
+  leftAt     DateTime?
+  session    LiveSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answers    LiveAnswer[]
+
+  @@unique([sessionId, nickname])
+  @@index([sessionId, score])
+  @@map("live_participants")
+}
+
+model LiveRound {
+  id                 String       @id @default(uuid())
+  sessionId          String
+  sequence           Int
+  state              String       @default("PENDING") @db.VarChar(20)
+  prompt             String
+  correctAnswer      String
+  options            Json
+  timeLimitSeconds   Int
+  startedAt          DateTime?
+  locksAt            DateTime?
+  revealedAt         DateTime?
+  createdAt          DateTime     @default(now())
+  session            LiveSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answers            LiveAnswer[]
+
+  @@unique([sessionId, sequence])
+  @@index([sessionId, state])
+  @@map("live_rounds")
+}
+
+model LiveAnswer {
+  id                String          @id @default(uuid())
+  roundId           String
+  participantId     String
+  answer            String
+  normalizedAnswer  String
+  isCorrect         Boolean
+  points            Int             @default(0)
+  responseTimeMs    Int
+  idempotencyKey    String          @db.VarChar(64)
+  createdAt         DateTime        @default(now())
+  round             LiveRound       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  participant       LiveParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, participantId])
+  @@unique([participantId, idempotencyKey])
+  @@index([roundId, createdAt])
+  @@map("live_answers")
+}
+
+model AdminAuditLog {
+  id          Int      @id @default(autoincrement())
+  adminUserId Int
+  action      String   @db.VarChar(64)
+  detail      String?  @db.VarChar(256)
+  createdAt   DateTime @default(now())
+
+  @@index([adminUserId, createdAt])
+  @@map("admin_audit_log")
 }

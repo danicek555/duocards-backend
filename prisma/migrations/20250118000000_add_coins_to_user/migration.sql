@@ -1,3 +1,2 @@
 -- AlterTable
 ALTER TABLE "users" ADD COLUMN "coins" INTEGER NOT NULL DEFAULT 100;
-
