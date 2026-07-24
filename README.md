@@ -1,9 +1,10 @@
 # DuoCards Fastify backend
 
-An isolated TypeScript backend for the native DuoCards client. It does not
-modify or import the root Next.js application. The current scope is a
-versioned `/api/v1` facade over the existing PostgreSQL tables with shared
-authentication, read endpoints and private text flashcard-set CRUD.
+A standalone TypeScript backend shared by the DuoCards web app and the native
+iOS client. It does not modify or import the root Next.js application. The
+current scope is a versioned `/api/v1` facade over the existing PostgreSQL
+tables with shared authentication, read endpoints, private text flashcard-set
+CRUD and live game v2.
 
 ## Requirements
 

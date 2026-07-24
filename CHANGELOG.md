@@ -23,7 +23,9 @@ DuoCards web app and the native iOS app.
   Resend HTTP API.
 - Secure password recovery with single-use reset tokens and
   `PUBLIC_APP_URL`-based reset links.
-- Remembered login sessions with server-side revocation.
+- Remembered login sessions validated server-side; changing or resetting the
+  password revokes every existing session (per-session revocation is a
+  documented follow-up — see README).
 - Liveness endpoint (`/health`) and a database-backed readiness endpoint
   (`/ready`, returns 503 when the database is unreachable).
 - Rate limiting, strict CORS, and fail-closed secret handling — startup
