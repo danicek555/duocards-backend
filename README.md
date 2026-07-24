@@ -58,8 +58,10 @@ host or the Mac's LAN address and configure the development transport policy.
 
 | Method | Path | Authentication | Compatible success payload |
 | --- | --- | --- | --- |
-| GET | `/health` | No | health metadata |
-| GET | `/api/v1/health` | No | health metadata |
+| GET | `/health` | No | liveness metadata |
+| GET | `/api/v1/health` | No | liveness metadata |
+| GET | `/ready` | No | readiness metadata (503 when the database is unreachable) |
+| GET | `/api/v1/ready` | No | readiness metadata (503 when the database is unreachable) |
 | POST | `/api/v1/auth/login` | No | `{ message, user }` + `auth` cookie |
 | POST | `/api/v1/auth/register` | No | `{ message, email, requiresVerification }` (201) + `registration` cookie |
 | POST | `/api/v1/auth/verify` | Registration cookie | `{ message, user }` + `auth` cookie |
@@ -137,10 +139,14 @@ unforgeable challenge as appropriate:
 - reset password: 20 per IP and 5 per HMAC'd token per 15 minutes.
 
 Rate-limit failures use the shared error envelope and include `Retry-After`.
-The bundled store is process-local, which matches a single prototype instance;
-use the plugin's shared Redis store before horizontally scaling production.
-`TRUST_PROXY` defaults to `false`; enable it only behind a trusted reverse
-proxy that replaces, rather than blindly forwards, client IP headers.
+The bundled store is process-local; set `REDIS_URL` to use a shared store before
+horizontally scaling production, otherwise limits are per-instance and reset on
+cold start (startup warns in production when it is missing). `TRUST_PROXY`
+accepts a proxy hop count (Cloud Run: `1`) or a trusted IP/CIDR list so the real
+client IP is read from `X-Forwarded-For`; a bare `true` is unsafe behind a proxy
+that forwards a client-supplied header. See
+[docs/CLOUD_RUN_AND_LOCAL_BACKEND.md](docs/CLOUD_RUN_AND_LOCAL_BACKEND.md) for how
+traffic is routed when Cloud Run is on versus off.
 For production traffic arriving through the web `/shared-api` proxy, the
 backend must be network-restricted to a trusted gateway hop that strips any
 incoming `X-Forwarded-For` and sets it from the real connection, with

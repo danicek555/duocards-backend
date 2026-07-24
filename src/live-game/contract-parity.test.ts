@@ -8,7 +8,7 @@ import {
 
 test("backend constants match the canonical live game v1 contract", async () => {
   const contractUrl = new URL(
-    "../../../contracts/live-game-v1.json",
+    "../../contracts/live-game-v1.json",
     import.meta.url,
   );
   const contract = JSON.parse(await readFile(contractUrl, "utf8")) as {

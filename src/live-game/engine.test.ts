@@ -3,11 +3,16 @@ import test from "node:test";
 import {
   buildQuestionDrafts,
   evaluateSurvivalElimination,
+  isTypedAnswerCorrect,
+  isWithinOneEdit,
   liveGameStreakMultiplier,
   normalizeAnswer,
+  normalizeAnswerLoose,
   normalizeLiveGameRoomCode,
   normalizeNickname,
+  pickBalancedLiveGameTeam,
   scoreLiveGameAnswer,
+  scoreLiveGameBet,
 } from "./engine.js";
 
 test("normalizers bound untrusted room, nickname and answer input", () => {
@@ -79,4 +84,35 @@ test("survival eliminates wrong answers but never the whole field", () => {
     evaluateSurvivalElimination([{ id: "a", answeredCorrect: true }]),
     [],
   );
+});
+
+test("typed answers forgive case, diacritics and one typo", () => {
+  assert.equal(normalizeAnswerLoose("  ČTYŘI  "), "ctyri");
+  assert.equal(isWithinOneEdit("ctyri", "ctyri"), true);
+  assert.equal(isWithinOneEdit("ctyri", "ctyr"), true); // deletion
+  assert.equal(isWithinOneEdit("ctyri", "cytri"), true); // transposition
+  assert.equal(isWithinOneEdit("ctyri", "styri"), true); // substitution
+  assert.equal(isWithinOneEdit("ctyri", "cyirt"), false);
+  assert.equal(isTypedAnswerCorrect("ctyri", "čtyři"), true);
+  assert.equal(isTypedAnswerCorrect("ctyfi", "čtyři"), true);
+  assert.equal(isTypedAnswerCorrect("ctyfy", "čtyři"), false);
+  // Short answers (under 4 characters) must match exactly.
+  assert.equal(isTypedAnswerCorrect("pas", "pes"), false);
+  assert.equal(isTypedAnswerCorrect("pes", "pes"), true);
+});
+
+test("risk bets pay double back on correct and burn on wrong", () => {
+  assert.equal(scoreLiveGameBet(true, 300), 300);
+  assert.equal(scoreLiveGameBet(false, 300), -300);
+  assert.equal(scoreLiveGameBet(true, 0), 0);
+  assert.equal(scoreLiveGameBet(false, -50), 0);
+  // Points for risk_bet never come from the speed curve.
+  assert.equal(scoreLiveGameAnswer("risk_bet", true, 0, 20), 0);
+});
+
+test("team battle balances joins and lets ties go to red", () => {
+  assert.equal(pickBalancedLiveGameTeam([]), "RED");
+  assert.equal(pickBalancedLiveGameTeam(["RED"]), "BLUE");
+  assert.equal(pickBalancedLiveGameTeam(["RED", "BLUE"]), "RED");
+  assert.equal(pickBalancedLiveGameTeam(["RED", "BLUE", "RED", null]), "BLUE");
 });

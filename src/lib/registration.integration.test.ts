@@ -24,6 +24,7 @@ const config = {
   trustProxy: false,
   databaseUrl: "postgresql://unused.test/duocards",
   authSecret: "test-secret-with-at-least-thirty-two-bytes",
+  redisUrl: null,
   corsOrigins: [],
   cookieSecure: false,
   verificationEmailMode: "resend",

@@ -1,6 +1,6 @@
 {
   "name": "duocards-backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -19,12 +19,14 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
     "@fastify/cors": "^11.0.0",
+    "@fastify/helmet": "^13.1.0",
     "@fastify/rate-limit": "^10.0.0",
     "@prisma/adapter-pg": "^7.1.0",
     "@prisma/client": "^7.1.0",
     "argon2": "^0.44.0",
     "dotenv": "^17.2.0",
     "fastify": "^5.6.0",
+    "ioredis": "^5.11.1",
     "pg": "^8.16.0"
   },
   "devDependencies": {

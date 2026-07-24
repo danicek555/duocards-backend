@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import type { LiveGameModeId } from "./contracts.js";
+import type { LiveGameModeId, LiveGameTeamId } from "./contracts.js";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -42,6 +42,72 @@ export function normalizeNickname(raw: string): string {
 
 export function normalizeAnswer(raw: string): string {
   return raw.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+}
+
+/** Normalized answer with diacritics stripped ("čtyři" → "ctyri"). */
+export function normalizeAnswerLoose(raw: string): string {
+  return normalizeAnswer(raw).normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+/**
+ * True when the strings are identical up to ONE edit: a substitution,
+ * an insertion/deletion, or a swap of two adjacent characters.
+ */
+export function isWithinOneEdit(a: string, b: string): boolean {
+  if (a === b) return true;
+  const diff = a.length - b.length;
+  if (Math.abs(diff) > 1) return false;
+
+  if (diff === 0) {
+    let mismatch = -1;
+    for (let index = 0; index < a.length; index += 1) {
+      if (a[index] === b[index]) continue;
+      if (mismatch === -1) {
+        mismatch = index;
+        continue;
+      }
+      // A second mismatch is only allowed as an adjacent transposition.
+      if (
+        index === mismatch + 1 &&
+        a[mismatch] === b[index] &&
+        a[index] === b[mismatch]
+      ) {
+        mismatch = -2;
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  const longer = diff > 0 ? a : b;
+  const shorter = diff > 0 ? b : a;
+  let longIndex = 0;
+  let shortIndex = 0;
+  let skipped = false;
+  while (shortIndex < shorter.length) {
+    if (longer[longIndex] === shorter[shortIndex]) {
+      longIndex += 1;
+      shortIndex += 1;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    longIndex += 1;
+  }
+  return true;
+}
+
+/**
+ * Typed-answer check: case- and diacritics-insensitive, and for answers of
+ * at least 4 characters one typo (edit) is forgiven.
+ */
+export function isTypedAnswerCorrect(guess: string, correct: string): boolean {
+  const normalizedGuess = normalizeAnswerLoose(guess);
+  const normalizedCorrect = normalizeAnswerLoose(correct);
+  if (normalizedGuess === normalizedCorrect) return true;
+  if (normalizedCorrect.length < 4) return false;
+  return isWithinOneEdit(normalizedGuess, normalizedCorrect);
 }
 
 function shuffle<T>(values: readonly T[]): T[] {
@@ -91,6 +157,16 @@ export function buildQuestionDrafts(
     });
 }
 
+/** Sprint: fixed session length, most correct answers wins. */
+export const SPRINT_DURATION_SECONDS = 120;
+/** Co-op mission: one shared five-minute push, the team total is the result. */
+export const CO_OP_DURATION_SECONDS = 300;
+/** Sprint pre-generates a queue no player can realistically exhaust. */
+export const SPRINT_QUESTION_COUNT = 50;
+/** Marathon: how long the room stays open when the host does not choose. */
+export const MARATHON_DEFAULT_DURATION_MINUTES = 24 * 60;
+export const MARATHON_MAX_DURATION_MINUTES = 7 * 24 * 60;
+
 export function scoreLiveGameAnswer(
   modeId: LiveGameModeId,
   isCorrect: boolean,
@@ -101,6 +177,10 @@ export function scoreLiveGameAnswer(
   if (!isCorrect) return 0;
   if (modeId === "accuracy") return 1_000;
   if (modeId === "co_op_mission") return 1;
+  // Self-paced modes: flat score, the ranking is simply "most correct".
+  if (modeId === "sprint" || modeId === "marathon") return 100;
+  // risk_bet points come from the stake (scoreLiveGameBet), not this curve.
+  if (modeId === "risk_bet") return 0;
 
   const limitMs = Math.max(1, timeLimitSeconds * 1_000);
   const remainingRatio = Math.max(0, 1 - responseTimeMs / limitMs);
@@ -131,4 +211,26 @@ export function evaluateSurvivalElimination(
   const losers = alivePlayers.filter((player) => !player.answeredCorrect);
   if (losers.length === 0 || losers.length === alivePlayers.length) return [];
   return losers.map((player) => player.id);
+}
+
+/**
+ * Risk mode: the stake comes out of the player's bank, a correct answer
+ * returns double the stake (net +bet), a wrong one loses it (net -bet).
+ */
+export function scoreLiveGameBet(isCorrect: boolean, bet: number): number {
+  const stake = Math.max(0, Math.floor(bet));
+  if (stake === 0) return 0;
+  return isCorrect ? stake : -stake;
+}
+
+/**
+ * Team battle: new players land in the smaller team so sides stay balanced;
+ * ties go to RED. Players may still switch manually while in the lobby.
+ */
+export function pickBalancedLiveGameTeam(
+  teams: readonly (LiveGameTeamId | null)[],
+): LiveGameTeamId {
+  const red = teams.filter((team) => team === "RED").length;
+  const blue = teams.filter((team) => team === "BLUE").length;
+  return red <= blue ? "RED" : "BLUE";
 }

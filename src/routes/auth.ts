@@ -14,7 +14,7 @@ import {
   SESSION_AUTH_TOKEN_TTL_SECONDS,
 } from "../lib/auth-token.js";
 import { ApiError } from "../lib/errors.js";
-import { verifyPassword } from "../lib/password.js";
+import { verifyDummyPassword, verifyPassword } from "../lib/password.js";
 
 interface AuthRouteOptions {
   config: AppConfig;
@@ -84,7 +84,13 @@ export async function registerAuthRoutes(
         },
       });
 
-      if (!user || !(await verifyPassword(password, user.password))) {
+      // Always run a password verification, even for an unknown email, so the
+      // response time does not reveal whether the account exists.
+      const passwordMatches = user
+        ? await verifyPassword(password, user.password)
+        : await verifyDummyPassword(password);
+
+      if (!user || !passwordMatches) {
         throw new ApiError(
           401,
           "INVALID_CREDENTIALS",

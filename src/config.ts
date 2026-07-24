@@ -8,9 +8,10 @@ export interface AppConfig {
   host: string;
   port: number;
   logLevel: string;
-  trustProxy: boolean;
+  trustProxy: boolean | number | string;
   databaseUrl: string;
   authSecret: string;
+  redisUrl: string | null;
   corsOrigins: string[];
   cookieSecure: boolean;
   verificationEmailMode: VerificationEmailMode;
@@ -25,6 +26,26 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   throw new Error(`Invalid boolean environment value: ${value}`);
+}
+
+// Behind a reverse proxy (Cloud Run, load balancer) the client IP must be read
+// from X-Forwarded-For, otherwise per-IP rate limiting keys every request to the
+// proxy address. A bare boolean is unsafe here: `true` trusts a client-supplied
+// forwarded chain, letting a caller spoof its rate-limit bucket. Prefer a hop
+// count (Cloud Run puts the real client IP one hop away → `1`) or an explicit
+// list of trusted proxy IPs/CIDR subnets, which Fastify passes to proxy-addr.
+function parseTrustProxy(
+  value: string | undefined,
+): boolean | number | string {
+  const normalized = value?.trim();
+  if (!normalized) return false;
+  const lower = normalized.toLowerCase();
+  if (["true", "yes", "on"].includes(lower)) return true;
+  if (["false", "no", "off"].includes(lower)) return false;
+  if (/^\d+$/.test(normalized)) {
+    return Number.parseInt(normalized, 10);
+  }
+  return normalized;
 }
 
 function parsePort(value: string | undefined): number {
@@ -153,9 +174,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     host: env.HOST?.trim() || "0.0.0.0",
     port: parsePort(env.PORT),
     logLevel: env.LOG_LEVEL?.trim() || "info",
-    trustProxy: parseBoolean(env.TRUST_PROXY, false),
+    trustProxy: parseTrustProxy(env.TRUST_PROXY),
     databaseUrl,
     authSecret,
+    redisUrl: env.REDIS_URL?.trim() || null,
     corsOrigins,
     cookieSecure:
       nodeEnv === "production"

@@ -307,6 +307,7 @@ model LiveParticipant {
   eliminated      Boolean      @default(false)
   practiceCorrect Int          @default(0)
   practiceTotal   Int          @default(0)
+  team            String?      @db.VarChar(8)
   joinedAt   DateTime     @default(now())
   lastSeenAt DateTime     @default(now())
   leftAt     DateTime?
@@ -357,4 +358,15 @@ model LiveAnswer {
   @@unique([participantId, idempotencyKey])
   @@index([roundId, createdAt])
   @@map("live_answers")
+}
+
+model AdminAuditLog {
+  id          Int      @id @default(autoincrement())
+  adminUserId Int
+  action      String   @db.VarChar(64)
+  detail      String?  @db.VarChar(256)
+  createdAt   DateTime @default(now())
+
+  @@index([adminUserId, createdAt])
+  @@map("admin_audit_log")
 }

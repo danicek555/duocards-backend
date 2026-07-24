@@ -16,6 +16,20 @@ test("proxy headers are not trusted unless explicitly enabled", () => {
   );
 });
 
+test("proxy trust accepts a hop count and a CIDR list", () => {
+  assert.equal(
+    loadConfig({ ...requiredEnvironment, TRUST_PROXY: "1" }).trustProxy,
+    1,
+  );
+  assert.equal(
+    loadConfig({
+      ...requiredEnvironment,
+      TRUST_PROXY: "127.0.0.1,10.0.0.0/8",
+    }).trustProxy,
+    "127.0.0.1,10.0.0.0/8",
+  );
+});
+
 test("configuration rejects a short auth secret", () => {
   assert.throws(
     () => loadConfig({ ...requiredEnvironment, AUTH_SECRET: "too-short" }),
